@@ -1,4 +1,4 @@
-//go:build linux
+//go:build windows
 
 package main
 
@@ -13,7 +13,7 @@ import (
 	"github.com/gogf/gf/v2/util/gconv"
 )
 
-var linux_name = "tgn52"
+var windows_name = "tgn52.exe"
 
 func TestManagerInit(t *testing.T) {
 	manager := extend.NewManager("protocol", "protocol-*", "./built", &module.ProtocolPlugin{})
@@ -33,7 +33,7 @@ func TestManagerInit(t *testing.T) {
 
 // 测试获取插件信息
 func TestProtocolInfo(t *testing.T) {
-	p, err := extend.GetProtocolPlugin().GetProtocolPlugin(linux_name)
+	p, err := extend.GetProtocolPlugin().GetProtocolPlugin(windows_name)
 	if err != nil {
 		return
 	}
@@ -47,7 +47,7 @@ type TestData struct {
 
 // 测试协议的编码方法
 func TestProtocolEncode(t *testing.T) {
-	p, err := extend.GetProtocolPlugin().GetProtocolPlugin(linux_name)
+	p, err := extend.GetProtocolPlugin().GetProtocolPlugin(windows_name)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -64,7 +64,7 @@ func TestProtocolEncode(t *testing.T) {
 // 测试自定义协议解析
 func TestProtocol(t *testing.T) {
 	data := gconv.Bytes("NB1;1234567;1;2;+25.5;00;030;+21;+22")
-	p, err := extend.GetProtocolPlugin().GetProtocolPlugin(linux_name)
+	p, err := extend.GetProtocolPlugin().GetProtocolPlugin(windows_name)
 	if err != nil {
 		return
 	}
@@ -113,7 +113,7 @@ func doServerStuff(conn net.Conn) {
 		fmt.Printf("Received data: %v\n", string(buf[:l]))
 
 		//获取协议插件解析后的数据 传入插件ID，及需要解析的数据
-		data, err := extend.GetProtocolPlugin().GetProtocolUnpackData(linux_name, buf[:l])
+		data, err := extend.GetProtocolPlugin().GetProtocolUnpackData(windows_name, buf[:l])
 		fmt.Println("============通过插件获取数据：", data)
 	}
 }

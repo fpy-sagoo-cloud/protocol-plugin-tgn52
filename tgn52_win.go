@@ -1,4 +1,4 @@
-//go:build linux
+//go:build windows
 
 package main
 
@@ -97,5 +97,5 @@ func main() {
 
 // 插件进程必须指定Impl，此处赋值为greeter对象
 var pluginMap = map[string]gplugin.Plugin{
-	"tgn52": new(Tgn52Plugin),
+	"tgn52.exe": new(Tgn52Plugin),
 }
