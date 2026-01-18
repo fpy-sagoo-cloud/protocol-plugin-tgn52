@@ -3,15 +3,12 @@
 
 协议格式：
 ```go
-NB1;1234567;1;2;+25.5;00;030;+21;+22
+NB1;1234567890;12;1;+21;+2
 ```
 	HeadStr        //字头
 	DeviceID       //设备ID
-	Signal         //信号质量
-	Battery        //电池电量
-	Temperature    //温度
-	Humidity       //湿度
-	Cycle          //周期
+	Capacitance    //电容
+	Sequence       //顺序
 	Update      []string //待上传
 
 电量和信号都是123， 分别代表低中高

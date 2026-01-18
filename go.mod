@@ -3,7 +3,7 @@ module hotgo-plugin
 go 1.25
 
 require (
-	gitee.com/fpy-go/hotgo-plugin-base v0.0.0-20260116073959-3a635906ef24
+	gitee.com/fpy-go/hotgo-plugin-base v0.0.0-20260118033740-5d1ed6ad9cf9
 	github.com/gogf/gf/v2 v2.9.4
 	github.com/hashicorp/go-plugin v1.4.10
 )
