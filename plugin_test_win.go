@@ -63,7 +63,7 @@ func TestProtocolEncode(t *testing.T) {
 
 // 测试自定义协议解析
 func TestProtocol(t *testing.T) {
-	data := gconv.Bytes("NB1;1234567;1;2;+25.5;00;030;+21;+22")
+	data := gconv.Bytes("FAFAFAAA")
 	p, err := extend.GetProtocolPlugin().GetProtocolPlugin(windows_name)
 	if err != nil {
 		return

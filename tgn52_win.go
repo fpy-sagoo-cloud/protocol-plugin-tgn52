@@ -38,7 +38,8 @@ const BatteryFrameHeader = "FAFB"
 const BatteryFrameMethodFunc = "battery"
 const UpPropertyFrameMethodFunc = "upProperty"
 
-const FrameMethod = "thing.event.command.post"
+const FrameCommandMethod = "thing.event.command.post"
+const FramePropertyMethod = "thing.event.property.post"
 
 // ProtocolHxt 实现
 type ProtocolHxt struct{}
@@ -65,12 +66,18 @@ func (p *ProtocolHxt) Decode(data model.DataReq) model.JsonRes {
 
 	if dataProcess(resp, data) {
 		return *resp
-	} else if commandProcess(resp, data) {
+	}
+
+	if commandProcess(resp, data) {
+		resp.Message = ""
+		resp.Code = 0
 		return *resp
-	} else if batteryProcess(resp, data) {
+	}
+
+	if batteryProcess(resp, data) {
+		resp.Message = ""
+		resp.Code = 0
 		return *resp
-	} else {
-		resp.Message = "数据解析失败"
 	}
 
 	return *resp
@@ -107,9 +114,10 @@ func batteryProcess(resp *model.JsonRes, data model.DataReq) bool {
 		Version:       "1.0",
 		Sys:           model.SysInfo{Ack: 0},
 		Params:        rd,
-		Method:        FrameMethod,
+		Method:        FrameCommandMethod,
 		ModelFuncName: BatteryFrameMethodFunc,
 	}
+
 	return true
 }
 
@@ -135,28 +143,34 @@ func commandProcess(resp *model.JsonRes, data model.DataReq) bool {
 		Version:       "1.0",
 		Sys:           model.SysInfo{Ack: 0},
 		Params:        rd,
-		Method:        FrameMethod,
+		Method:        FrameCommandMethod,
 		ModelFuncName: "",
 	}
+	rd[ProductKey] = model.Param{Value: ProductKeyNoMainDataTopic, Time: nowTime}
 
 	// 判断是否是整个测量数据开始数据帧
 	hexStr := strings.ToUpper(hex.EncodeToString(dataBytes))
 	if hexStr == FrameStart {
 		mqttModel.ModelFuncName = StartFrameMethodFunc
 		rd[mqttModel.ModelFuncName] = model.Param{Value: true, Time: nowTime}
+		mqttModel.Params = rd
+		resp.Data = mqttModel
 		return true
 	} else if hexStr == FrameEnd {
 		mqttModel.ModelFuncName = EndFrameMethodFunc
 		rd[mqttModel.ModelFuncName] = model.Param{Value: true, Time: nowTime}
+		mqttModel.Params = rd
+		resp.Data = mqttModel
 		return true
 	} else if hexStr == FrameFlashFull {
 		mqttModel.ModelFuncName = FlashFullFrameMethodFunc
 		rd[mqttModel.ModelFuncName] = model.Param{Value: true, Time: nowTime}
+		mqttModel.Params = rd
+		resp.Data = mqttModel
 		return true
 	}
-	rd[ProductKey] = model.Param{Value: ProductKeyNoMainDataTopic, Time: nowTime}
-	mqttModel.Params = rd
-	return true
+
+	return false
 }
 
 func dataProcess(resp *model.JsonRes, data model.DataReq) bool {
@@ -221,7 +235,7 @@ func dataProcess(resp *model.JsonRes, data model.DataReq) bool {
 		Version:       "1.0",
 		Sys:           model.SysInfo{Ack: 0},
 		Params:        rd,
-		Method:        FrameMethod,
+		Method:        FramePropertyMethod,
 		ModelFuncName: UpPropertyFrameMethodFunc,
 	}
 	return true
