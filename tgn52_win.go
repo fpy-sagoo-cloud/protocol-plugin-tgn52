@@ -3,8 +3,10 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net/rpc"
+	"strings"
 	"time"
 
 	"gitee.com/fpy-go/hotgo-plugin-base/extend/model"
@@ -14,8 +16,29 @@ import (
 	gplugin "github.com/hashicorp/go-plugin"
 )
 
+// ProductKey hotgo平台产品标识，对应呼吸贴产品
+const ProductKey = "202422012110346"
+
+// ProductKeyNoMainDataTopic hotgo平台产品标识，对应呼吸贴产品非主数据topic
+const ProductKeyNoMainDataTopic = "product.hxt.device.parse.no.main.data.receive"
+
 // 因为数据包长度占用一个字节，所以最大为255，所以这里设置最大长度为255
 const maxPacketLength = 255
+
+const FrameStart = "FAFAFAAA"
+const StartFrameMethodFunc = "start"
+
+const FrameEnd = "FAAAAAAA"
+const EndFrameMethodFunc = "end"
+
+const FrameFlashFull = "FAFFFFAA"
+const FlashFullFrameMethodFunc = "flashFull"
+
+const BatteryFrameHeader = "FAFB"
+const BatteryFrameMethodFunc = "battery"
+const UpPropertyFrameMethodFunc = "upProperty"
+
+const FrameMethod = "thing.event.command.post"
 
 // ProtocolHxt 实现
 type ProtocolHxt struct{}
@@ -37,24 +60,119 @@ func (p *ProtocolHxt) Encode(args interface{}) model.JsonRes {
 }
 
 func (p *ProtocolHxt) Decode(data model.DataReq) model.JsonRes {
-	var resp model.JsonRes
+	var resp = &model.JsonRes{}
 	resp.Code = 0
 
-	// 将输入的字节数据转换为十六进制字符串
-	dataBytes := data.Data
+	if dataProcess(resp, data) {
+		return *resp
+	} else if commandProcess(resp, data) {
+		return *resp
+	} else if batteryProcess(resp, data) {
+		return *resp
+	} else {
+		resp.Message = "数据解析失败"
+	}
 
+	return *resp
+}
+
+func batteryProcess(resp *model.JsonRes, data model.DataReq) bool {
+	dataBytes := data.Data
+	// 检查数据长度,最少四个字节
+	if len(dataBytes) < 4 {
+		resp.Code = 1
+		resp.Message = "数据长度不足"
+		return false
+	}
+	hexStr := strings.ToUpper(hex.EncodeToString(dataBytes[:2]))
+	// 验证帧头是否为 FA
+	if BatteryFrameHeader != hexStr {
+		resp.Code = 1
+		resp.Message = "电量帧头错误，期望 " + BatteryFrameHeader
+		return false
+	}
+
+	if dataBytes[3] != 0xAA {
+		resp.Code = 1
+		resp.Message = "帧尾错误，期望 AA"
+		return false
+	}
+
+	var rd = make(map[string]model.Param)
+	nowTime := time.Now().Unix()
+	rd[BatteryFrameMethodFunc] = model.Param{Value: fmt.Sprintf("%02X", dataBytes[2]), Time: nowTime}
+	rd[ProductKey] = model.Param{Value: ProductKeyNoMainDataTopic, Time: nowTime}
+	resp.Data = model.HotgoMqttModel{
+		Id:            guid.S(),
+		Version:       "1.0",
+		Sys:           model.SysInfo{Ack: 0},
+		Params:        rd,
+		Method:        FrameMethod,
+		ModelFuncName: BatteryFrameMethodFunc,
+	}
+	return true
+}
+
+func commandProcess(resp *model.JsonRes, data model.DataReq) bool {
+	dataBytes := data.Data
+	// 检查数据长度,最少四个字节
+	if len(dataBytes) < 4 {
+		resp.Code = 1
+		resp.Message = "数据长度不足"
+		return false
+	}
+	// 验证帧头是否为 FA
+	if dataBytes[0] != 0xFA {
+		resp.Code = 1
+		resp.Message = "帧头错误，期望 FA"
+		return false
+	}
+
+	var rd = make(map[string]model.Param)
+	nowTime := time.Now().Unix()
+	mqttModel := model.HotgoMqttModel{
+		Id:            guid.S(),
+		Version:       "1.0",
+		Sys:           model.SysInfo{Ack: 0},
+		Params:        rd,
+		Method:        FrameMethod,
+		ModelFuncName: "",
+	}
+
+	// 判断是否是整个测量数据开始数据帧
+	hexStr := strings.ToUpper(hex.EncodeToString(dataBytes))
+	if hexStr == FrameStart {
+		mqttModel.ModelFuncName = StartFrameMethodFunc
+		rd[mqttModel.ModelFuncName] = model.Param{Value: true, Time: nowTime}
+		return true
+	} else if hexStr == FrameEnd {
+		mqttModel.ModelFuncName = EndFrameMethodFunc
+		rd[mqttModel.ModelFuncName] = model.Param{Value: true, Time: nowTime}
+		return true
+	} else if hexStr == FrameFlashFull {
+		mqttModel.ModelFuncName = FlashFullFrameMethodFunc
+		rd[mqttModel.ModelFuncName] = model.Param{Value: true, Time: nowTime}
+		return true
+	}
+	rd[ProductKey] = model.Param{Value: ProductKeyNoMainDataTopic, Time: nowTime}
+	mqttModel.Params = rd
+	return true
+}
+
+func dataProcess(resp *model.JsonRes, data model.DataReq) bool {
+	dataBytes := data.Data
 	// 检查数据长度是否足够（至少要有帧头、包序号、包长度、帧尾）
 	if len(dataBytes) < 4 {
 		resp.Code = 1
 		resp.Message = "数据长度不足"
-		return resp
+		return false
 	}
 
 	// 验证帧头是否为 FA
 	if dataBytes[0] != 0xFA {
 		resp.Code = 1
 		resp.Message = "帧头错误，期望 FA"
-		return resp
+		return false
 	}
 
 	// 验证帧尾是否在正确位置
@@ -62,13 +180,13 @@ func (p *ProtocolHxt) Decode(data model.DataReq) model.JsonRes {
 	if expectedLength < 4 || expectedLength != len(dataBytes) {
 		resp.Code = 1
 		resp.Message = "包长度不匹配"
-		return resp
+		return false
 	}
 
 	if dataBytes[expectedLength-1] != 0xAA {
 		resp.Code = 1
 		resp.Message = "帧尾错误，期望 AA"
-		return resp
+		return false
 	}
 
 	// 提取各部分数据
@@ -80,10 +198,9 @@ func (p *ProtocolHxt) Decode(data model.DataReq) model.JsonRes {
 	nowTime := time.Now().Unix()
 
 	// 设置解析结果
-	rd["head"] = model.Param{Value: fmt.Sprintf("%02X", dataBytes[0]), Time: nowTime} // 帧头 FA
-	rd["packetSequence"] = model.Param{Value: packetSequence, Time: nowTime}          // 包序号，特别注意这是关键字段
-	rd["packetLength"] = model.Param{Value: packetLength, Time: nowTime}              // 包长度
-	rd["payload"] = model.Param{Value: formatPayloadToHex(payload), Time: nowTime}    // 数据帧部分
+	rd["packetSequence"] = model.Param{Value: packetSequence, Time: nowTime}       // 包序号，特别注意这是关键字段
+	rd["packetLength"] = model.Param{Value: packetLength, Time: nowTime}           // 包长度
+	rd["payload"] = model.Param{Value: formatPayloadToHex(payload), Time: nowTime} // 数据帧部分
 	rd["capacitance"] = model.Param{Value: convertBytesToIntArray(payload), Time: nowTime}
 	if data.DataIdent != nil && data.DataIdent.UserKey != "" {
 		rd["user"] = model.Param{Value: data.DataIdent.UserKey, Time: nowTime}
@@ -104,10 +221,10 @@ func (p *ProtocolHxt) Decode(data model.DataReq) model.JsonRes {
 		Version:       "1.0",
 		Sys:           model.SysInfo{Ack: 0},
 		Params:        rd,
-		Method:        "thing.event.property.post",
-		ModelFuncName: "upProperty",
+		Method:        FrameMethod,
+		ModelFuncName: UpPropertyFrameMethodFunc,
 	}
-	return resp
+	return true
 }
 
 // 将字节数组转换为整数数组
